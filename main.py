@@ -176,9 +176,16 @@ rate_limiter = RateLimiter(CLIENT_RATE_LIMIT, CLIENT_RATE_WINDOW)
 
 app = FastAPI(title="GitHub Repository Explorer API", version="1.0.0")
 
+default_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=os.environ.get("CORS_ORIGINS", ",".join(default_cors_origins)).split(","),
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -399,3 +406,15 @@ async def get_repositories(
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "cache": cache.stats()}
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Let's Build API Gateway is active and running!",
+        "endpoints": {
+            "health": "/api/health",
+            "search": "/api/repositories"
+        }
+    }
+
