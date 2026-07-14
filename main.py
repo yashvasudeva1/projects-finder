@@ -185,7 +185,7 @@ default_cors_origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", ",".join(default_cors_origins)).split(","),
+    allow_origins=["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
