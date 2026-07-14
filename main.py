@@ -20,7 +20,7 @@ from collections import OrderedDict
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -408,13 +408,72 @@ async def health():
     return {"status": "ok", "cache": cache.stats()}
 
 
+async def prewarm_cache_task():
+    # Trigger the default search query (stars:>=500) to warm up the cache
+    q = "stars:>=500"
+    page = 1
+    per_page = 30
+    key = cache_key(q, page, per_page)
+    
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if GITHUB_PAT:
+        headers["Authorization"] = f"Bearer {GITHUB_PAT}"
+        
+    params = {"q": q, "sort": "stars", "order": "desc", "page": page, "per_page": per_page}
+    
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(GITHUB_SEARCH_URL, headers=headers, params=params)
+            if resp.status_code == 200:
+                data = resp.json()
+                items = [
+                    RepoItem(
+                        id=item["id"],
+                        name=item["name"],
+                        full_name=item["full_name"],
+                        html_url=item["html_url"],
+                        description=item.get("description"),
+                        language=item.get("language"),
+                        stargazers_count=item.get("stargazers_count", 0),
+                        forks_count=item.get("forks_count", 0),
+                        topics=item.get("topics", []),
+                        owner_login=item["owner"]["login"],
+                        owner_avatar=item["owner"]["avatar_url"],
+                    )
+                    for item in data.get("items", [])
+                ]
+                payload = {
+                    "total_count": data.get("total_count", 0),
+                    "incomplete_results": data.get("incomplete_results", False),
+                    "page": page,
+                    "items": [i.model_dump() for i in items],
+                    "github_rate_limit_remaining": int(resp.headers.get("x-ratelimit-remaining")) if resp.headers.get("x-ratelimit-remaining") is not None else None,
+                }
+                await cache.set(key, payload)
+                print(f"[CRON] Cache pre-warmed successfully. Remaining rate limit: {payload['github_rate_limit_remaining']}")
+            else:
+                print(f"[CRON] Failed to pre-warm cache: HTTP {resp.status_code} - {resp.text[:200]}")
+        except Exception as e:
+            print(f"[CRON] Error during pre-warm cache: {e}")
+
+
+@app.get("/api/cron")
+async def run_cron(background_tasks: BackgroundTasks):
+    background_tasks.add_task(prewarm_cache_task)
+    return {"status": "ok"}
+
+
 @app.get("/")
 async def root():
     return {
         "message": "Let's Build API Gateway is active and running!",
         "endpoints": {
             "health": "/api/health",
-            "search": "/api/repositories"
+            "search": "/api/repositories",
+            "cron": "/api/cron"
         }
     }
 
