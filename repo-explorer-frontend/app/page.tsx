@@ -6,7 +6,7 @@ import Image from "next/image";
 import RepositoryCard, { Repository } from "@/components/RepositoryCard";
 import ParticleSphere from "@/components/ParticleSphere";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "https://lets-build-backend.onrender.com/";
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? "https://lets-build-backend.onrender.com").replace(/\/+$/, "");
 
 // ── Languages — grouped by ecosystem ────────────────────────────────────────
 const LANGUAGE_GROUPS = [
